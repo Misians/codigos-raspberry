@@ -17,13 +17,21 @@ def ler_valor(vp_address):
     try:
         # Abre a porta
         with serial.Serial(PORTA, baudrate=BAUDRATE, timeout=0.5) as ser:
+            time.sleep(0.05) # <-- TEMPO PARA A PORTA ESTABILIZAR ANTES DE LER
+            
             ser.reset_input_buffer() # Limpa lixo antigo do buffer
             ser.write(comando_leitura) # Envia o pedido
             
-            # Aguarda a resposta (o ecrã costuma responder em 2 a 10 milissegundos)
+            # Aguarda a resposta
             tempo_inicio = time.time()
             while ser.in_waiting < 9: # Um frame de resposta completo tem 9 bytes
                 if time.time() - tempo_inicio > 0.5:
+                    # Se deu timeout, vamos ver se chegou pelo menos algum byte
+                    bytes_perdidos = ser.in_waiting
+                    print(f" [DEBUG] Timeout! Apenas recebi {bytes_perdidos} bytes de 9.")
+                    if bytes_perdidos > 0:
+                        lixo = ser.read(bytes_perdidos)
+                        print(f" [DEBUG] Dados recebidos: {lixo.hex(' ').upper()}")
                     return None # Passou meio segundo e não respondeu (Timeout)
                 time.sleep(0.01)
             
@@ -35,12 +43,14 @@ def ler_valor(vp_address):
                 # O valor real está sempre nos dois últimos bytes do pacote
                 valor_lido = (resposta[7] << 8) | resposta[8]
                 return valor_lido
+            else:
+                print(f" [DEBUG] Resposta do ecrã não reconhecida: {resposta.hex(' ').upper()}")
             
             return None
     except Exception as e:
         print(f"[!] Erro ao tentar ler a porta: {e}")
         return None
-
+    
 def enviar_valor(vp_address, valor):
     """Monta e envia o frame DGUS (0x82), abrindo e fechando a porta."""
     vp_h = (vp_address >> 8) & 0xFF
